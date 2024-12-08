@@ -1,0 +1,41 @@
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "fps=30,scale=-1:280:flags=lanczos,crop=240:in_h:(in_w-240)/2:0" -q:v 9 "/Users/kevindarrah/Downloads/output.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "transpose=1,fps=30,scale=-1:240:flags=lanczos,crop=280:in_h:(in_w-280)/2:0" -q:v 9 "/Users/kevindarrah/Downloads/output.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "scale=-1:240,crop=280:240:(iw-280)/2:0" -q:v 9 "/Users/kevindarrah/Downloads/output.mjpeg"
+
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "transpose=1,scale=240:280,crop=240:280:0:0" -q:v 9 -vcodec mjpeg "/Users/kevindarrah/Downloads/output_rotated_240x280.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "transpose=1,scale=240:280" -q:v 9 -vcodec mjpeg "/Users/kevindarrah/Downloads/output_rotated_scaled_240x280.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input1.mp4" -vf "fps=20,scale=-1:280:flags=lanczos,crop=240:in_h:(in_w-240)/2:0,transpose=1" -q:v 9 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output.mjpeg"
+
+
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input1.mp4" -vf "fps=20,scale=-1:240:flags=lanczos,transpose=1" -q:v 1 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output.mjpeg"
+
+
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "transpose=1,scale=-1:240" -q:v 9 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output_resized_rotated.mjpeg"
+
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "transpose=1,scale=if(gte(iw/ih\,280/240)\,280,-1):if(gte(iw/ih\,280/240)\,-1,240),crop=280:240" -q:v 9 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output_zoomed_280x240.mjpeg"
+
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "transpose=1,scale=280:240:force_original_aspect_ratio=increase,crop=280:240" -q:v 9 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output_zoomed_280x240.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input1.mp4" -vf "transpose=1,scale=280:240:force_original_aspect_ratio=1,pad=280:240:(ow-iw)/2:(oh-ih)/2,crop=280:240" -q:v 9 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/rotated.mjpeg" -vf "scale=280:240:force_original_aspect_ratio=1,pad=280:240:(ow-iw)/2:(oh-ih)/2,crop=280:240" -q:v 9 -vcodec mjpeg -pix_fmt yuvj420p "/Users/kevindarrah/Downloads/output.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "fps=30,scale=-1:240:flags=lanczos,crop=280:240:(iw-280)/2:0,transpose=1" -q:v 2 -vcodec mjpeg "/Users/kevindarrah/Downloads/output.mjpeg"
+
+
+ffmpeg -i "input.mp4" -vf "fps=24,scale=-1:240:flags=lanczos,crop=280:240:(iw-280)/2:0,transpose=1" -q:v 2 -vcodec mjpeg "output.mjpeg"
+
+ffmpeg -i "/Users/kevindarrah/Downloads/input.mp4" -vf "fps=18,scale=-1:240:flags=lanczos,crop=280:240:(iw-280)/2:0,transpose=1" -q:v 4 -vcodec mjpeg -fs 3900M "/Users/kevindarrah/Downloads/output.mjpeg"
+
+
+
+
