@@ -43,53 +43,69 @@ public:
 
   bool readMjpegBuf() {
     if (_inputindex == 0) {
-      _buf_read = _input.read(_read_buf, READ_BUFFER_SIZE);
-      _inputindex += _buf_read;
+        // Read initial data into the buffer
+        _buf_read = _input.read(_read_buf, READ_BUFFER_SIZE);
+        if (_buf_read <= 0) {
+            Serial.println(F("Error: Failed to read initial buffer."));
+            return false; // End of file or read error
+        }
+        _inputindex += _buf_read;
     }
+
     _mjpeg_buf_offset = 0;
-    int i = 3;
     bool found_FFD9 = false;
-    if (_buf_read > 0) {
-      i = 3;
-      while ((_buf_read > 0) && (!found_FFD9)) {
-        if ((_mjpeg_buf_offset > 0) && (_mjpeg_buf[_mjpeg_buf_offset - 1] == 0xFF) && (_read_buf[0] == 0xD9))  // JPEG trailer
-        {
-          found_FFD9 = true;
-        } else {
-          while ((i < _buf_read) && (!found_FFD9)) {
-            if ((_read_buf[i] == 0xFF) && (_read_buf[i + 1] == 0xD9))  // JPEG trailer
-            {
-              found_FFD9 = true;
-              ++i;
+    int i = 0;
+
+    while (!found_FFD9) {
+        // Look for the JPEG trailer (0xFFD9)
+        for (i = 0; i < _buf_read - 1; ++i) {
+            if (_read_buf[i] == 0xFF && _read_buf[i + 1] == 0xD9) {
+                found_FFD9 = true;
+                ++i; // Include the marker
+                break;
             }
-            ++i;
-          }
         }
 
-        // Serial.printf("i: %d\n", i);
-        memcpy(_mjpeg_buf + _mjpeg_buf_offset, _read_buf, i);
-        _mjpeg_buf_offset += i;
-        size_t o = _buf_read - i;
-        if (o > 0) {
-          // Serial.printf("o: %d\n", o);
-          memcpy(_read_buf, _read_buf + i, o);
-          _buf_read = _input.read(_read_buf + o, READ_BUFFER_SIZE - o);
-          _inputindex += _buf_read;
-          _buf_read += o;
-          // Serial.printf("_buf_read: %d\n", _buf_read);
-        } else {
-          _buf_read = _input.read(_read_buf, READ_BUFFER_SIZE);
-          _inputindex += _buf_read;
+        // If the end of the frame is found
+        if (found_FFD9) {
+            // Ensure the buffer doesn't overflow
+            if (_mjpeg_buf_offset + i + 1 > MJPEG_BUFFER_SIZE) {
+                Serial.println(F("Error: MJPEG buffer overflow!"));
+                return false; // Skip frame on overflow
+            }
+            memcpy(_mjpeg_buf + _mjpeg_buf_offset, _read_buf, i + 1);
+            _mjpeg_buf_offset += i + 1;
+
+            // Move the remaining data in the read buffer
+            size_t remaining = _buf_read - (i + 1);
+            memmove(_read_buf, _read_buf + i + 1, remaining);
+            _buf_read = remaining;
+
+            return true; // Successfully loaded a frame
         }
-        i = 0;
-      }
-      if (found_FFD9) {
-        return true;
-      }
+
+        // If no end marker is found, copy the entire buffer
+        if (_mjpeg_buf_offset + _buf_read > MJPEG_BUFFER_SIZE) {
+            Serial.println(F("Error: MJPEG buffer overflow while loading frame!"));
+            return false; // Skip frame on overflow
+        }
+        memcpy(_mjpeg_buf + _mjpeg_buf_offset, _read_buf, _buf_read);
+        _mjpeg_buf_offset += _buf_read;
+
+        // Read more data
+        _buf_read = _input.read(_read_buf, READ_BUFFER_SIZE);
+        if (_buf_read <= 0) {
+            Serial.println(F("Error: End of file or read error."));
+            return false; // End of file or read error
+        }
+        _inputindex += _buf_read;
     }
 
-    return false;
-  }
+    return false; // Should not reach here
+}
+
+
+
 
   bool drawJpg() {
     _fileindex = 0;
@@ -133,6 +149,37 @@ public:
     }
     return true;
   }
+
+
+bool skipToNextFrame() {
+    Serial.println(F("Skipping to the next frame..."));
+
+    while (true) {
+        if (_mjpeg_buf_offset + 1 < _buf_read) {
+            // Look for SOI marker (0xFFD8)
+            if (_read_buf[_mjpeg_buf_offset] == 0xFF && _read_buf[_mjpeg_buf_offset + 1] == 0xD8) {
+                Serial.println(F("Found next frame."));
+                return true;  // Found the next frame
+            }
+            _mjpeg_buf_offset++;
+        } else {
+            // Reload the buffer if at the end
+            size_t remaining = _buf_read - _mjpeg_buf_offset;
+            if (remaining > 0) {
+                memmove(_read_buf, _read_buf + _mjpeg_buf_offset, remaining);
+            }
+            size_t bytesRead = _input.read(_read_buf + remaining, READ_BUFFER_SIZE - remaining);
+            if (bytesRead <= 0) {
+                Serial.println(F("End of file or read error while skipping frames."));
+                return false;  // End of file or read error
+            }
+            _buf_read = remaining + bytesRead;
+            _mjpeg_buf_offset = 0;  // Reset offset after reloading
+        }
+    }
+}
+
+
 
 private:
 

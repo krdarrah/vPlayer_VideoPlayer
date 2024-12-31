@@ -1,13 +1,12 @@
 #include <WiFi.h>
 #include <SD_MMC.h>  // Use SD_MMC library for SDMMC interface
 #include "esp_ota_ops.h"
-#include "Arduino_GFX_Library.h"// 1.4.7
+#include "Arduino_GFX_Library.h"  // 1.4.7
 #include "driver/ledc.h"
-#include <CST816S.h>// 1.1.1
+#include <CST816S.h>  // 1.1.1
 #include "icelandFont.h"
 #define TFT_BRIGHTNESS 255
 #define MJPEG_BUFFER_SIZE (280 * 240 * 3 + 1024)
-
 
 // Pin definitions
 #define TFT_BL 9
@@ -26,7 +25,7 @@ int sdMMC_D3 = 34;   // Data 3 pin (for 4-bit mode)
 const char* firmwareFilePath = "/firmware.bin";
 
 // ST7789 Display
-Arduino_HWSPI* bus = new Arduino_HWSPI(13 /* DC */, 10 /* CS */, SCK, MOSI, MISO);
+Arduino_DataBus* bus = new Arduino_ESP32SPI(13 /* DC */, 10 /* CS */, SCK, MOSI, MISO, HSPI);
 Arduino_GFX* gfx = new Arduino_ST7789(bus, 14 /* RST */, 0 /* rotation */, true /* IPS */, 240 /* width */, 280 /* height */, 0 /* col offset 1 */, 276 /* row offset 1 */);
 
 // Include and initialize touchpad
@@ -61,6 +60,16 @@ void checkAndUpdateFirmware() {
       return;
     }
 
+    // Initialize display
+    gfx->fillScreen(BLACK);
+    gfx->setCursor(10, 10);
+    gfx->setTextColor(WHITE);
+    gfx->println(F("Starting Firmware Update..."));
+
+    // Get file size for progress calculation
+    size_t fileSize = updateFile.size();
+    size_t bytesProcessed = 0;
+
     // Start OTA
     esp_ota_handle_t otaHandle;
     const esp_partition_t* updatePartition = esp_ota_get_next_update_partition(NULL);
@@ -80,20 +89,46 @@ void checkAndUpdateFirmware() {
         updateFile.close();
         return;
       }
+
+      // Update progress
+      bytesProcessed += bytesRead;
+      int progress = (bytesProcessed * 100) / fileSize;
+      gfx->fillRect(10, 50, 220, 20, BLACK);                   // Clear previous progress bar
+      gfx->fillRect(10, 50, 220 * progress / 100, 20, GREEN);  // Draw progress bar
+      gfx->setCursor(10, 80);
+      gfx->setTextColor(WHITE);
+      gfx->printf("Progress: %d%%", progress);
     }
 
     // Finalize OTA update
     if (esp_ota_end(otaHandle) == ESP_OK) {
       if (esp_ota_set_boot_partition(updatePartition) == ESP_OK) {
         Serial.println(F("Firmware update completed successfully!"));
+
+        gfx->fillScreen(BLACK);
+        gfx->setCursor(10, 10);
+        gfx->setTextColor(GREEN);
+        gfx->println(F("Update Completed!"));
+        gfx->println(F("Rebooting..."));
+
         updateFile.close();
         SD_MMC.remove(firmwareFilePath);  // Delete firmware file
         esp_restart();                    // Restart to apply the update
       } else {
         Serial.println(F("ERROR: OTA set boot partition failed"));
+
+        gfx->fillScreen(BLACK);
+        gfx->setCursor(10, 10);
+        gfx->setTextColor(RED);
+        gfx->println(F("Update Failed!"));
       }
     } else {
       Serial.println(F("ERROR: OTA end failed"));
+
+      gfx->fillScreen(BLACK);
+      gfx->setCursor(10, 10);
+      gfx->setTextColor(RED);
+      gfx->println(F("Update Failed!"));
     }
   } else {
     Serial.println(F("No firmware update file found."));
@@ -327,35 +362,38 @@ void playAllVideosInOrder(bool shuffle) {
       unsigned long frameStart;
 
       // Read and play each frame
+      int consecutiveFailures = 0;  // Track consecutive frame render failures
+
       while (mjpeg.readMjpegBuf()) {
         unsigned long frameStart = millis();
 
         // Try to render the frame
         if (!mjpeg.drawJpg()) {
-          Serial.println(F("video skipped due to error"));
-          break;
+          Serial.println(F("Skipping corrupted frame."));
+          consecutiveFailures++;
+
+          // Break if too many consecutive failures
+          if (consecutiveFailures >= 10) {
+            Serial.println(F("Too many consecutive corrupted frames. Exiting."));
+            break;
+          }
+
+          continue;  // Skip to the next frame
         }
 
-        // frameCount++;
+        // Reset consecutive failures on successful render
+        consecutiveFailures = 0;
 
-        // // Update FPS every second
-        // if (millis() - lastTime >= 1000) {
-        //   fps = frameCount;
-        //   frameCount = 0;
-        //   lastTime = millis();
-
-        //   Serial.println(fps);
-        // }
-
-        //Frame rate control: Wait for the frame to finish
+        // Frame rate control: Wait for the frame to finish
         while (millis() - frameStart < 55) {}
 
-        //Handle touch event to skip to the next video
+        // Handle touch event to skip to the next video
         if (touch.available() && touch.data.event == 0x01) {
           Serial.println(F("Single click detected, advancing to the next video."));
           break;  // Exit the loop to move to the next video
         }
       }
+
 
       videoFile.close();  // Close the video file
 
@@ -368,6 +406,16 @@ void playAllVideosInOrder(bool shuffle) {
     } else {
       Serial.print(F("ERROR: Failed to open file: "));
       Serial.println(fullPath);
+      SD_MMC.end();
+      if (!SD_MMC.begin("/sdcard", false)) {
+        Serial.println(F("ERROR: SD card mount failed."));
+        gfx->fillScreen(BLACK);
+        gfx->setCursor(20, 120);
+        gfx->setTextColor(RED);
+        gfx->println(F("ERROR: SD card mount failed."));
+        while (1)
+          ;  // Halt further execution
+      }
     }
 
     // Move to the next video in the list
@@ -397,9 +445,9 @@ void setup() {
   }
 
 #ifdef TFT_BL
-  ledcSetup(1, 12000, 8);        // 12 kHz PWM, 8-bit resolution
-  ledcAttachPin(TFT_BL, 1);      // assign TFT_BL pin to channel 1
-  ledcWrite(1, TFT_BRIGHTNESS);  // brightness 0 - 255
+  ledcAttach(TFT_BL, 12000, 8);       // Attach pin with 12 kHz PWM, 8-bit resolution
+  ledcWrite(TFT_BL, TFT_BRIGHTNESS);  // Set brightness (0 - 255)
+
 #endif
 
   delay(1000);
@@ -411,12 +459,20 @@ void setup() {
   delay(100);
   gfx->fillScreen(BLUE);
   delay(100);
+
   checkAndUpdateFirmware();  // Check for firmware update at boot
 
   // Display play mode selection GUI
   displayPlayModeSelection();
   bool shuffle = getPlayModeSelection();
-  gfx->setRotation(0);  // Reset rotation to original orientation
+  gfx->setRotation(0);                           // Reset rotation to original orientation
+  const unsigned long touchDebounceDelay = 300;  // 300ms delay
+  unsigned long startTime = millis();
+  while (millis() - startTime < touchDebounceDelay) {
+    if (touch.available()) {
+      touch.gesture();  // Clear any lingering touch inputs
+    }
+  }
   playAllVideosInOrder(shuffle);
 }
 
